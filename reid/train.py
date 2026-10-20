@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
 from reid.configs.config import setup
@@ -22,7 +23,7 @@ logger = logging.getLogger("reid.train")
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser("3D-LENS training", add_help=True)
+    parser = argparse.ArgumentParser("3D-VITAL training", add_help=True)
     parser.add_argument("--name", type=str, required=True, help="Name of the experiment")
     parser.add_argument("--config", type=str, required=True, help="Path to config file")
     parser.add_argument("--output_dir", type=str, required=True, help="Path to output directory")
@@ -62,9 +63,6 @@ def train(cfg):
 
     for epoch in range(1, cfg.TRAIN.MAX_EPOCHS + 1):
         logger.info(f"Epoch {epoch} / {cfg.TRAIN.MAX_EPOCHS}")
-        # Curriculum, the rejection probability of hard synthetic views depends on the epoch
-        if hasattr(data_manager.train_sampler, "set_epoch"):
-            data_manager.train_sampler.set_epoch(epoch)
 
         start_time = time.time()
         loss_meter.reset()
@@ -79,10 +77,14 @@ def train(cfg):
             x = data["x"].to("cuda")
             target = data["pid"].to("cuda")
             domain_labels = data["domain_label"].to("cuda")
+            # V tilde, fraction of visible pixels of each patch (Sec. 3.2), on the token grid of the ViT
+            patch_vis = F.avg_pool2d(
+                data["vis"][:, None].to("cuda"), cfg.MODEL.REID.PATCH_SIZE, stride=cfg.MODEL.REID.STRIDE_SIZE
+            ).flatten(1)
 
             with torch.amp.autocast("cuda", enabled=True):
                 outputs = model(x)
-                losses = loss_func(outputs, target, domain_labels, cfg.TRAIN)
+                losses = loss_func(outputs, target, domain_labels, patch_vis, cfg.TRAIN)
 
             optimizer.zero_grad()
             scaler.scale(losses["TOTAL_LOSS"]).backward()

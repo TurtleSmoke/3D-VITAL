@@ -14,8 +14,8 @@ def euclidean_dist(x, y):
     return dist.clamp(min=1e-12).sqrt()
 
 
-def triplet_loss(embedding, targets):
-    """Batch-hard triplet loss with soft margin (Hermans et al., 'In Defense of the Triplet Loss')."""
+def triplet_loss(embedding, targets, anchor_weights):
+    """Batch-hard triplet loss with soft margin (Hermans et al.), each anchor weighted by w_a (Eq. 5)."""
     dist_mat = euclidean_dist(embedding, embedding)
     n = dist_mat.size(0)
     is_pos = targets.view(n, 1).expand(n, n).eq(targets.view(n, 1).expand(n, n).t()).float()
@@ -25,10 +25,21 @@ def triplet_loss(embedding, targets):
     dist_an, _ = torch.min(dist_mat * is_neg + is_pos * 1e9, dim=1)
 
     y = torch.ones_like(dist_an)
-    loss = F.soft_margin_loss(dist_an - dist_ap, y)
+    loss = F.soft_margin_loss(dist_an - dist_ap, y, reduction="none")
+    loss = (anchor_weights * loss).sum() / anchor_weights.sum().clamp_min(1e-6)
     if loss == float("Inf"):
         loss = F.margin_ranking_loss(dist_an, dist_ap, y, margin=0.3)
     return loss
+
+
+def visibility_attention_loss(cls_attn, patch_visibility, synthetic, eps=1e-6):
+    """L_vis (Eq. 4), on synthetic views only."""
+    if not synthetic.any():
+        return cls_attn.new_zeros((), dtype=torch.float32)
+    attn = cls_attn[synthetic].float().mean(1)
+    attn = attn / attn.sum(1, keepdim=True)
+    target = patch_visibility[synthetic] / (eps + patch_visibility[synthetic].sum(1, keepdim=True))
+    return -(target * attn.clamp_min(1e-8).log()).sum(1).mean()
 
 
 def cross_entropy_loss(pred_class_outputs, gt_classes):
@@ -39,11 +50,15 @@ def cross_entropy_loss(pred_class_outputs, gt_classes):
     return loss.sum() / non_zero_cnt
 
 
-def loss_func(outputs, gt_labels, domain_labels, cfg):
-    """L_total = lambda_id * L_id + lambda_tri * L_tri + lambda_dom * L_dom (Eq. 2)."""
+def loss_func(outputs, gt_labels, domain_labels, patch_visibility, cfg):
+    """L_total = lambda_id * L_id + lambda_tri * L_tri^w + lambda_dom * L_dom + lambda_vis * L_vis (Eq. 6)."""
+    synthetic = domain_labels == 1
+    # w_a, mean patch visibility of a synthetic view, 1 for a real image
+    anchor_weights = torch.where(synthetic, patch_visibility.mean(1), torch.ones_like(patch_visibility[:, 0]))
     losses = {
         "ID_LOSS": cross_entropy_loss(outputs["cls_outputs"], gt_labels) * cfg.ID_LOSS_WEIGHT,
-        "TRI_LOSS": triplet_loss(outputs["features"], gt_labels) * cfg.TRIPLET_LOSS_WEIGHT,
+        "TRI_LOSS": triplet_loss(outputs["features"], gt_labels, anchor_weights) * cfg.TRIPLET_LOSS_WEIGHT,
+        "VIS_LOSS": visibility_attention_loss(outputs["cls_attn"], patch_visibility, synthetic) * cfg.VIS_LOSS_WEIGHT,
     }
     if cfg.DOMAIN_LOSS_WEIGHT > 0:
         losses["DOMAIN_LOSS"] = F.cross_entropy(outputs["domain_logits"], domain_labels) * cfg.DOMAIN_LOSS_WEIGHT

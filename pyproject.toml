@@ -3,9 +3,9 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "3d-lens"
+name = "3d-vital"
 version = "1.0.0"
-description = "3D-LENS: 3D Lifting-based Elevated Novel-view Synthesis for Single-View Aerial-Ground Re-Identification (ECCV 2026)"
+description = "3D-VITAL: Visibility-aware Identity Training from Artificial Liftings of 3D Reconstruction model for Cross-View Object Re-Identification (NeurIPS 2026)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -42,12 +42,14 @@ dev = [
     "ruff>=0.16.10",
 ]
 generation = [
+    "embreex>=2.17.7",
     "matplotlib>=3.10.9",
     "opencv-python>=4.11.0.86",
     "pandas>=2.3.3",
     "pyrender>=0.1.45",
     "scipy>=1.15.3",
     "simple-lama-inpainting>=0.1.0",
+    "transformers>=4.46,<5",  # 5.x needs torch>=2.6
     "trimesh>=5.1.1",
     "ultralytics>=8.2.85",
 ]

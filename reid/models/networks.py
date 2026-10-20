@@ -39,8 +39,7 @@ class ReID(nn.Module):
     """
     ViT-B/16 (TransReID implementation) with a domain token (Sec. 3.3).
 
-    The backbone prepends three learned tokens, [CLS] (identity), domain token (real vs synthetic classification)
-    and one extra learned token kept for compatibility with the released checkpoints (`view_token`).
+    The backbone prepends two learned tokens, [CLS] (identity) and domain token (real vs synthetic classification).
     """
 
     def __init__(self, cfg, num_classes):
@@ -81,15 +80,16 @@ class ReID(nn.Module):
 
     def forward(self, x):
         x = (x - self.pixel_mean) / self.pixel_std
-        global_feat, domain_feat, _ = self.base(x)
+        global_feat, domain_feat, cls_attn = self.base(x)
 
         outputs = self.heads(global_feat)
         if self.training:
             outputs["domain_logits"] = self.domain_classifier(domain_feat)
+            outputs["cls_attn"] = cls_attn
         return outputs
 
     def load_checkpoint(self, path):
-        """Load a 3D-LENS checkpoint."""
+        """Load a 3D-VITAL checkpoint."""
         state_dict = torch.load(Path(path), map_location="cpu", weights_only=True)
         # Heads of older internal checkpoints that are not part of the released model
         state_dict = {

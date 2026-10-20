@@ -1,4 +1,4 @@
-"""Keep only the parameters used at inference (backbone + BNNeck) in a 3D-LENS training checkpoint.
+"""Keep only the parameters used at inference (backbone + BNNeck) in a 3D-VITAL training checkpoint.
 
 python scripts/strip_checkpoint.py model_last.pth agreid_aerial.pth [--fp32]
 """

@@ -1,6 +1,6 @@
 DATA:
   DATASET: "MOO"
-  DATASET_DIR: [ "MOO", "MOO_3D-LENS" ]
+  DATASET_DIR: [ "MOO", "MOO_3D-VITAL" ]
   QUERY: [ "top", "side", "topside" ]
   GALLERY: [ "side", "top", "topside" ]
   DOMAIN_FILTER: [ 0 ]  # train on side views only

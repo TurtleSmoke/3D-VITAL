@@ -1,5 +1,5 @@
 #!/bin/bash
-# Evaluate a 3D-LENS checkpoint (only the real dataset is needed).
+# Evaluate a 3D-VITAL checkpoint (only the real dataset is needed).
 #   bash scripts/eval.sh <setting> <datasets_dir> <checkpoint.pth>
 set -e
 setting=$1

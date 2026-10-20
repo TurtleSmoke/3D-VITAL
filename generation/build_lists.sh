@@ -7,7 +7,7 @@ set -e
 dataset=$1
 dir=$2
 
-list() { (cd "$1" && find "$2" -name "*.jpg" -o -name "*.png" | sort) > "$dir/train_all.txt"; }
+list() { (cd "$1" && find "$2" \( -name "*.jpg" -o -name "*.png" \) ! -name "*_visibility.png" | sort) > "$dir/train_all.txt"; }
 
 case $dataset in
     AG-ReID) list "$dir" bounding_box_train ;;

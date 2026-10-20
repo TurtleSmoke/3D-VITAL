@@ -9,14 +9,17 @@ AG_PATTERN = re.compile(r"P(\d+)T(\d+)A(\d+)C(\d+)F\d+")
 MOO_PATTERN = re.compile(r"cow(\d+)_(\d+)")
 
 
-def _read_lists(dirs, list_name, img_dir=""):
+def _read_lists(dirs, list_names, img_dir=""):
     """
     Read the image list `<dir>/<list_name>` of [real] or [real, synthetic] as sorted (path, domain) pairs.
     The listed paths are relative to `<dir>/<img_dir>`.
     """
+    list_names = [list_names] if isinstance(list_names, str) else list(list_names)
+    if len(list_names) < len(dirs):
+        raise ValueError(f"DATA.TRAIN needs one image list per directory of {[str(d) for d in dirs]}, got {list_names}")
     return sorted(
         (d / img_dir / name, domain)
-        for domain, d in enumerate(dirs)
+        for domain, (d, list_name) in enumerate(zip(dirs, list_names, strict=False))
         for name in (d / list_name).read_text().splitlines()
     )
 
@@ -59,7 +62,7 @@ def _ag_camid(img):
 
 class ImageReIDDataset:
     """
-    dataset_dir is [real] or [real, synthetic (3D-LENS)].
+    dataset_dir is [real] or [real, synthetic (3D-VITAL)].
     Train images come from both directories, query and gallery only from the real one.
     """
 
@@ -76,7 +79,7 @@ class ImageReIDDataset:
         if len(query_data) != len(gallery_data):
             raise ValueError(f"Query and gallery must have the same length: {len(query_data)} != {len(gallery_data)}")
 
-        self.train = ImageDataset(train_data, train_transform, name="train")
+        self.train = ImageDataset(train_data, train_transform, name="train", visibility=True)
         self.query = [ImageDataset(d, test_transform, name=n) for d, n in zip(query_data, query, strict=True)]
         self.gallery = [ImageDataset(d, test_transform, name=n) for d, n in zip(gallery_data, gallery, strict=True)]
 

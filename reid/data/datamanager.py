@@ -4,7 +4,7 @@ import torch
 import torch.utils.data
 
 from reid.data.datasets import build_datasets
-from reid.data.sampler import BalancedDomainSampler, NaiveIdentitySampler
+from reid.data.sampler import NaiveIdentitySampler
 from reid.data.transforms import build_transforms
 
 
@@ -22,21 +22,7 @@ class DataManager:
         )
 
         train_data = self._reid_dataset.train.data
-        if cfg.TRAIN.SAMPLER == "balanced":
-            sampler = BalancedDomainSampler(
-                train_data,
-                cfg.TRAIN.BATCH_SIZE,
-                cfg.TRAIN.NUM_INSTANCES,
-                seed=cfg.GLOBAL.SEED,
-                real_ratio=cfg.TRAIN.REAL_RATIO,
-                warmup_epochs=cfg.TRAIN.CURRICULUM_WARMUP_EPOCHS,
-            )
-        elif cfg.TRAIN.SAMPLER == "naive":
-            sampler = NaiveIdentitySampler(
-                train_data, cfg.TRAIN.BATCH_SIZE, cfg.TRAIN.NUM_INSTANCES, seed=cfg.GLOBAL.SEED
-            )
-        else:
-            raise ValueError(f"Unknown sampler '{cfg.TRAIN.SAMPLER}', expected 'balanced' or 'naive'")
+        sampler = NaiveIdentitySampler(train_data, cfg.TRAIN.BATCH_SIZE, cfg.TRAIN.NUM_INSTANCES, seed=cfg.GLOBAL.SEED)
 
         self.train_sampler = sampler
         self.train_loader = torch.utils.data.DataLoader(

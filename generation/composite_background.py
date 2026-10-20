@@ -5,8 +5,10 @@ removed with LaMa inpainting (mask = dilated segmentation), and the render is pa
 the source person. The drawn real image is also the style reference of StyleID (step 6), so the script writes the
 two StyleID file lists <output>/content_<tag>.txt and <output>/style_<tag>.txt (one pair per line).
 
+The visibility map of the render is pasted the same way and written to <vis-output> (the output directory of StyleID).
+
 python generation/composite_background.py --render-root AG-ReID_renders --segmented-root AG-ReID_segmented \
-    --real-root AG-ReID --output AG-ReID_composite AG-ReID_renders/**/*.png
+    --real-root AG-ReID --output AG-ReID_composite --vis-output AG-ReID_3D-VITAL AG-ReID_renders/**/*.png
 """
 
 import argparse
@@ -57,12 +59,27 @@ def composite(render_rgba, source_segmentation, background):
     return Image.fromarray((image * 255).astype(np.uint8))
 
 
+def paste_visibility(visibility, source_segmentation, size):
+    """Paste the visibility map of a render like composite() pastes the render, on an empty canvas of the given size."""
+    alpha = np.array(source_segmentation.getchannel("A"))
+    ys, xs = np.where(alpha > 0)
+    y_min, y_max, x_min, x_max = ys.min(), ys.max(), xs.min(), xs.max()
+
+    visibility = cv2.resize(
+        np.array(visibility), (x_max - x_min + 1, y_max - y_min + 1), interpolation=cv2.INTER_NEAREST_EXACT
+    )
+    canvas = np.zeros((source_segmentation.size[1], source_segmentation.size[0]), dtype=np.uint8)
+    canvas[y_min : y_max + 1, x_min : x_max + 1] = visibility
+    return Image.fromarray(canvas).resize(size, Image.NEAREST)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--render-root", type=Path, required=True, help="output of render_views.py")
     parser.add_argument("--segmented-root", type=Path, required=True, help="output of segment.py on the real images")
     parser.add_argument("--real-root", type=Path, required=True, help="real dataset (JPEG images)")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--vis-output", type=Path, required=True, help="where the visibility maps are written")
     parser.add_argument("--tag", default="0", help="suffix of the StyleID lists, to run several shards in parallel")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--force", action="store_true")
@@ -78,24 +95,30 @@ def main():
         backgrounds.setdefault(camera_type(path), []).append(path)
 
     contents, styles = [], []
-    for render_path in args.renders:
+    for render_path in [r for r in args.renders if not r.stem.endswith("_visibility")]:
         relative = render_path.relative_to(args.render_root)
         source = args.segmented_root / re.sub(r"_\d+\.png$", ".png", str(relative))
         output = (args.output / relative).with_suffix(".jpg")
+        vis_output = args.vis_output / relative.with_name(f"{relative.stem}_visibility.png")
 
         background_segmentation = random.choice(backgrounds[camera_type(render_path)])
         real_path = (args.real_root / background_segmentation.relative_to(args.segmented_root)).with_suffix(".jpg")
         contents.append(output.resolve())
         styles.append(real_path.resolve())
-        if output.exists() and not args.force:
+        if output.exists() and vis_output.exists() and not args.force:
             continue
 
         background = remove_person(
             lama, Image.open(real_path).convert("RGB"), Image.open(background_segmentation).convert("RGBA")
         )
-        image = composite(Image.open(render_path), Image.open(source).convert("RGBA"), background)
+        source_segmentation = Image.open(source).convert("RGBA")
+        image = composite(Image.open(render_path), source_segmentation, background)
         output.parent.mkdir(parents=True, exist_ok=True)
         image.save(output)
+
+        visibility = Image.open(render_path.with_name(f"{render_path.stem}_visibility.png")).convert("L")
+        vis_output.parent.mkdir(parents=True, exist_ok=True)
+        paste_visibility(visibility, source_segmentation, image.size).save(vis_output)
 
     (args.output / f"content_{args.tag}.txt").write_text("".join(f"{p}\n" for p in contents))
     (args.output / f"style_{args.tag}.txt").write_text("".join(f"{p}\n" for p in styles))

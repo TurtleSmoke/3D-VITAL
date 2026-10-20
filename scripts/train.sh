@@ -1,8 +1,8 @@
 #!/bin/bash
-# Train 3D-LENS on one single-view setting.
+# Train 3D-VITAL on one single-view setting.
 #   bash scripts/train.sh <setting> <datasets_dir> [extra KEY=VALUE options]
 # <setting> is a file of reid/configs/train/, e.g. agreid_aerial, agreid_v2_cctv, moo_top.
-# ViT baseline, add TRAIN.SAMPLER=naive TRAIN.DOMAIN_LOSS_WEIGHT=0 "DATA.DATASET_DIR=[<real dataset>]"
+# ViT baseline, add TRAIN.DOMAIN_LOSS_WEIGHT=0 "DATA.DATASET_DIR=[<real dataset>]"
 set -e
 setting=$1
 root_dir=$2

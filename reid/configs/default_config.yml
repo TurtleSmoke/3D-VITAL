@@ -11,7 +11,7 @@ DATA:
   ROOT_DIR:             # set by --root_dir
   DATASET:              # "AG-ReID", "AG-ReID.v2" or "MOO"
   DATASET_DIR:          # [real dataset, synthetic dataset], or [real dataset] for the baseline; relative to ROOT_DIR
-  TRAIN: "train_all.txt"
+  TRAIN: [ "train_all.txt", "train_cvcf.txt" ]  # image list of each directory
   QUERY:
   GALLERY:
   DOMAIN_FILTER:        # viewpoint-domain of the training images (single-view training)
@@ -22,11 +22,9 @@ TRAIN:
   MAX_EPOCHS: 120
   IMG_SIZE: [ 256, 128 ]
   LR: 0.0008
-  SAMPLER: "balanced"   # "balanced" (3D-LENS) or "naive" (ViT baseline, real images only)
-  REAL_RATIO: 0.5
-  CURRICULUM_WARMUP_EPOCHS: 20  # 0 disables the curriculum
   ID_LOSS_WEIGHT: 1.0
   TRIPLET_LOSS_WEIGHT: 1.0
+  VIS_LOSS_WEIGHT: 1.0
   DOMAIN_LOSS_WEIGHT: 0.5
 
   OPTIMIZER:
@@ -50,4 +48,4 @@ MODEL:
 
 TEST:
   BATCH_SIZE: 256
-  WEIGHTS:              # 3D-LENS checkpoint, required for RUN_MODE=eval
+  WEIGHTS:              # 3D-VITAL checkpoint, required for RUN_MODE=eval

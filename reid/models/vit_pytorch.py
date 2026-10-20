@@ -190,7 +190,7 @@ class Attention(nn.Module):
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
-        return x
+        return x, attn
 
 
 class Block(nn.Module):
@@ -219,9 +219,10 @@ class Block(nn.Module):
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
     def forward(self, x):
-        x = x + self.drop_path(self.attn(self.norm1(x)))
+        y, attn = self.attn(self.norm1(x))
+        x = x + self.drop_path(y)
         x = x + self.drop_path(self.mlp(self.norm2(x)))
-        return x
+        return x, attn
 
 
 class PatchEmbed(nn.Module):
@@ -378,8 +379,7 @@ class TransReID(nn.Module):
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.domain_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.view_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 3, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 2, embed_dim))
         self.cam_num = camera
         self.sie_xishu = sie_xishu
         # Initialize SIE Embedding
@@ -417,7 +417,6 @@ class TransReID(nn.Module):
 
         trunc_normal_(self.cls_token, std=0.02)
         trunc_normal_(self.domain_token, std=0.02)
-        trunc_normal_(self.view_token, std=0.02)
         trunc_normal_(self.pos_embed, std=0.02)
 
         self.apply(self._init_weights)
@@ -433,7 +432,7 @@ class TransReID(nn.Module):
 
     @torch.jit.ignore
     def no_weight_decay(self):
-        return {"pos_embed", "cls_token", "domain_token", "view_token"}
+        return {"pos_embed", "cls_token", "domain_token"}
 
     def get_classifier(self):
         return self.head
@@ -448,8 +447,7 @@ class TransReID(nn.Module):
 
         cls_tokens = self.cls_token.expand(B, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
         domain_tokens = self.domain_token.expand(B, -1, -1)
-        view_tokens = self.view_token.expand(B, -1, -1)
-        x = torch.cat((cls_tokens, domain_tokens, view_tokens, x), dim=1)
+        x = torch.cat((cls_tokens, domain_tokens, x), dim=1)
 
         if self.cam_num > 0:
             x = x + self.pos_embed + self.sie_xishu * self.sie_embed[camera_id]
@@ -458,15 +456,16 @@ class TransReID(nn.Module):
 
         x = self.pos_drop(x)
         for blk in self.blocks:
-            x = blk(x)
+            x, attn = blk(x)
 
         x = self.norm(x)
 
-        return x[:, 0].reshape(x.shape[0], -1, 1, 1), x[:, 1], x[:, 2]
+        # Last-layer attention of the [CLS] token over the image patches (B, heads, P), used by L_vis
+        return x[:, 0].reshape(x.shape[0], -1, 1, 1), x[:, 1], attn[:, :, 0, 2:]
 
     def forward(self, x, cam_label=None, view_label=None):
-        cls_feat, domain_feat, view_feat = self.forward_features(x, cam_label, view_label)
-        return cls_feat, domain_feat, view_feat
+        cls_feat, domain_feat, cls_attn = self.forward_features(x, cam_label, view_label)
+        return cls_feat, domain_feat, cls_attn
 
     def load_param(self, param_dict):
         if "model" in param_dict:
@@ -478,10 +477,6 @@ class TransReID(nn.Module):
             param_dict = param_dict["model"]
         if "state_dict" in param_dict:
             param_dict = param_dict["state_dict"]
-
-        # Check if view_token exists in checkpoint
-        if "view_token" not in param_dict:
-            print("view_token not found in checkpoint - will be randomly initialized")
 
         for k, v in param_dict.items():
             if "head" in k or "dist" in k:
@@ -510,8 +505,9 @@ def resize_pos_embed(posemb, posemb_new, hight, width):
     # https://github.com/google-research/vision_transformer/blob/00883dd691c63a6830751563748663526e811cee/vit_jax/checkpoint.py#L224
     ntok_new = posemb_new.shape[1]
 
-    posemb_token, domain_token, view_token, posemb_grid = posemb[:, :1], posemb[:, 1:2], posemb[:, 2:3], posemb[0, 1:]
-    ntok_new -= 3
+    # The domain token has no ImageNet counterpart, its position embedding keeps its random initialization
+    posemb_token, domain_token, posemb_grid = posemb[:, :1], posemb_new[:, 1:2], posemb[0, 1:]
+    ntok_new -= 2
 
     gs_old = int(math.sqrt(len(posemb_grid)))
     print(
@@ -522,7 +518,7 @@ def resize_pos_embed(posemb, posemb_new, hight, width):
     posemb_grid = posemb_grid.reshape(1, gs_old, gs_old, -1).permute(0, 3, 1, 2)
     posemb_grid = F.interpolate(posemb_grid, size=(hight, width), mode="bilinear")
     posemb_grid = posemb_grid.permute(0, 2, 3, 1).reshape(1, hight * width, -1)
-    posemb = torch.cat([posemb_token, domain_token, view_token, posemb_grid], dim=1)
+    posemb = torch.cat([posemb_token, domain_token, posemb_grid], dim=1)
     return posemb
 
 
